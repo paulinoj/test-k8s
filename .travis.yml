@@ -1,6 +1,13 @@
 sudo: required
 services:
   - docker
+env:
+  # Get the current git sha and save inside environmental variable
+  # for use in deploy script
+  global:
+    - SHA=$(git rev-parse HEAD)
+  # make sure Google Cloud CLI does not try to show us any prompts that will block this travis deployment
+    - CLOUDSDK_CORE_DISABLE_PROMPTS=1
 before_install:
   - openssl aes-256-cbc -K $encrypted_0c35eebf403c_key -iv $encrypted_0c35eebf403c_iv -in test-k8s.json.enc -out test-k8s.json -d
 # Install Google Cloud SDK
@@ -9,4 +16,22 @@ before_install:
 # install kubectl command
   - gcloud components update kubectl
 # Need to create service account on GC to use for the next command
-  - gcloud auth activate-service-account --key-file service-account.json
+  - gcloud auth activate-service-account --key-file test-k8s.json
+  - gcloud config set project test-k8s-236320
+  - gcloud config set compute/zone us-central1-a
+  - gcloud container clusters get-credentials multi-cluster
+  # $DOCKER_PASSWORD and $DOCKER_USERNAME are travis environmental variables
+  # that are set through the travis console
+  - echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USERNAME" --password-stdin
+
+  - docker build -t paulinoj/react-test -f ./client/Dockerfile.dev ./client
+
+script:
+  - docker run paulinoj/react-test npm run test -- --coverage
+
+deploy:
+  provider: script
+  script: bash ./deploy.sh
+  on:
+    branch: master
+
